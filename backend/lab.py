@@ -23,8 +23,8 @@ def handle_negative(data):
 def test_connect():
     emit('message', {'data': 'Connected'})
 
-@app.route('/input', methods=['GET'])
-def get_input():
+@app.route('/input/<id>', methods=['GET'])
+def get_input(id):
     return jsonify(messages)
 
 if __name__ == '__main__':
