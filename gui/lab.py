@@ -1,7 +1,7 @@
 from flask import Flask
 import pip._vendor.requests as requests
 from flask_socketio import SocketIO, emit
-from PySide6.QtWidgets import QApplication, QMainWindow, QLineEdit, QVBoxLayout, QWidget,QGroupBox, QHBoxLayout, QTextEdit, QPushButton
+from PySide6.QtWidgets import QApplication, QMainWindow, QLineEdit, QVBoxLayout, QWidget,QGroupBox, QHBoxLayout, QTextEdit, QPushButton, QScrollArea, QSizePolicy, QFrame
 from PySide6.QtCore import Slot, Signal, QThread
 from PySide6.QtGui import QTextOption
 import sys
@@ -70,15 +70,20 @@ class Conditioning(QHBoxLayout):
         # self.negative_input = InputField("Enter negative text here...", sio_thread.send_negative, id)
         # Create a group box and set a background color
         self.group_box = QGroupBox()
+        self.group_box.setMinimumSize(500, 200)
         self.group_box.setStyleSheet("""
             background-color: #1B1A55;
             border: 1px solid black;
             padding: 10px;
             border-radius: 5px;
-            min-height: 200px;
-            max-width: 1000px;
+            height: 100px;
+            max-width: 800px;
                                      padding: 10px;
         """)
+
+
+        sizePolicy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self.group_box.setSizePolicy(sizePolicy)
 
         self.addWidget(self.positive_input)
         # self.addWidget(self.negative_input)
@@ -94,27 +99,52 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Input App")
         self.setStyleSheet("background-color: #070F2B;")  # Black background
 
-        self.conditioning_layout = QHBoxLayout()
+        self.layout = QVBoxLayout()
+        self.conditioning_layouts = []  # Initialize the list of row layouts
 
-        self.row = QHBoxLayout()
-        self.row.addLayout(self.conditioning_layout)
+        self.addRow()
 
-        plus_button = QPushButton("+")
-        plus_button.clicked.connect(self.add_conditioning)
-        self.row.addWidget(plus_button)
-
-        layout = QVBoxLayout()
-        layout.addLayout(self.row)
+        # Create a button for adding new rows
+        add_row_button = QPushButton("Add Row")
+        add_row_button.clicked.connect(self.addRow)
+        self.layout.addWidget(add_row_button)
 
         # Set central widget
         central_widget = QWidget()
-        central_widget.setLayout(layout)
+        central_widget.setLayout(self.layout)
         self.setCentralWidget(central_widget)
+
+    def addRow(self):
+        # Create a new QHBoxLayout for this row
+        row_layout = QHBoxLayout()
+
+        plus_button = QPushButton("+")
+        plus_button.clicked.connect(self.add_conditioning)
+
+        # Create a scroll area and set its widget resizable property to True
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.NoFrame)
+
+        # Create a widget for the scroll area and set its layout
+        scroll_widget = QWidget()
+        scroll_widget.setLayout(row_layout)
+        scroll_area.setWidget(scroll_widget)
+
+        self.row = QHBoxLayout()
+        self.row.addWidget(scroll_area)
+        self.row.addWidget(plus_button)
+
+        self.layout.addLayout(self.row)
+
+        # Store the row layout so we can add Conditioning widgets to it later
+        self.conditioning_layouts.append(row_layout)
 
     def add_conditioning(self):
         sharedCondition = SharedCondition(0, "pos", True)
         conditioning = Conditioning(self.sio_thread, sharedCondition)
-        self.conditioning_layout.addWidget(conditioning.group_box)
+        # Add the Conditioning widget to the last row's layout
+        self.conditioning_layouts[-1].addWidget(conditioning.group_box)
 
 def main():
     # Create the application
