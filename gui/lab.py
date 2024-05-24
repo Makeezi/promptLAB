@@ -1,9 +1,9 @@
 from flask import Flask
 import pip._vendor.requests as requests
 from flask_socketio import SocketIO, emit
-from PySide6.QtWidgets import QApplication, QMainWindow, QLineEdit, QVBoxLayout, QWidget,QGroupBox, QHBoxLayout, QTextEdit, QPushButton, QScrollArea, QSizePolicy, QFrame
+from PySide6.QtWidgets import QMenu,QComboBox, QApplication, QMainWindow, QLineEdit, QVBoxLayout, QWidget,QGroupBox, QHBoxLayout, QTextEdit, QPushButton, QScrollArea, QSizePolicy, QFrame
 from PySide6.QtCore import Slot, Signal, QThread
-from PySide6.QtGui import QTextOption, QGuiApplication
+from PySide6.QtGui import QTextOption, QGuiApplication, QCursor
 from PySide6.QtCore import Qt
 import sys
 from socketio import Client
@@ -33,13 +33,43 @@ class SharedCondition:
         self.condition = condition
         self.connect = connect
 
+class Rules(QMenu):
+    conditioning_selected = Signal(str)
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.setTitle("Rules")
+
+        self.option1 = self.addAction("Option 1")
+        self.option2 = self.addAction("Option 2")
+        self.add_positive_conditioning = self.addAction("Add Positive Conditioning")
+        self.add_negative_conditioning = self.addAction("Add Negative Conditioning")
+
+        self.triggered.connect(self.check_selection)
+
+        self.setStyleSheet("""
+            QMenu {
+                color: #9290C3;
+            }
+            
+            QMenu::item:selected {
+
+                border: 1px solid #9290C3;  /* Border color when hovered */
+            }
+                """)
+
+    def check_selection(self, action):
+        if action == self.add_positive_conditioning:
+            self.conditioning_selected.emit("pos")
+        elif action == self.add_negative_conditioning:
+            self.conditioning_selected.emit("neg")
 
 class InputField(QTextEdit):
     textChangedWithText = Signal(str, int)
     def __init__(self, placeholder_text, signal_connection, sharedCondition, parent=None):
         super().__init__(parent)
-        self.id = id
+        self.id = sharedCondition.id
         self.setPlaceholderText(str(sharedCondition.id) + " " + placeholder_text)
         if(sharedCondition.connect):
             self.textChanged.connect(self.emitTextChangedWithText)
@@ -67,7 +97,7 @@ class Conditioning(QHBoxLayout):
         if(sharedCondition.condition == "pos"):
             self.positive_input = InputField("Enter positive text here...", sio_thread.send_positive, sharedCondition)
         elif(sharedCondition.condition == "neg"):
-            self.positive_input = InputField("Enter negative text here...", sio_thread.send_negative, sharedCondition)
+            self.negative_input = InputField("Enter negative text here...", sio_thread.send_negative, sharedCondition)
         # self.negative_input = InputField("Enter negative text here...", sio_thread.send_negative, id)
         # Create a group box and set a background color
         self.group_box = QGroupBox()
@@ -86,7 +116,10 @@ class Conditioning(QHBoxLayout):
         sizePolicy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         self.group_box.setSizePolicy(sizePolicy)
 
-        self.addWidget(self.positive_input)
+        if(sharedCondition.condition == "pos"):
+            self.addWidget(self.positive_input)
+        elif(sharedCondition.condition == "neg"):
+            self.addWidget(self.negative_input)
         # self.addWidget(self.negative_input)
         self.group_box.setLayout(self)
 
@@ -112,7 +145,6 @@ buttonStyle = """
 class MainWindow(QMainWindow):
     def __init__(self, sio_thread):
         super().__init__()
-
         screen = QGuiApplication.screens()[0]
         screen_size = screen.size()
 
@@ -128,11 +160,11 @@ class MainWindow(QMainWindow):
 
         self.layout = QVBoxLayout()
 
-        self.addRow()
-
+        self.addRow(self.layout.count())
+        
         # Create a button for adding new rows
         add_row_button = QPushButton("Add Row")
-        add_row_button.clicked.connect(self.addRow)
+        add_row_button.clicked.connect(lambda: self.addRow(self.layout.count()))
         add_row_button.setStyleSheet(buttonStyle)
         
 
@@ -155,14 +187,14 @@ class MainWindow(QMainWindow):
         central_widget.setLayout(self.column)
         self.setCentralWidget(central_widget)
 
-    def addRow(self):
+    def addRow(self, count):
         # Create a new QHBoxLayout for this row
         row_layout = QHBoxLayout()
         row_layout.setSpacing(0)
-        plus_button = QPushButton("+")
-        plus_button.clicked.connect(lambda: self.add_conditioning(row_layout))
-        plus_button.setStyleSheet(buttonStyle)
-
+        self.plus_button = QPushButton("+")
+        self.plus_button.clicked.connect(lambda: self.add_rule(row_layout, count))
+        self.plus_button.setStyleSheet(buttonStyle)
+        
         # Create a scroll area and set its widget resizable property to True
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -177,12 +209,25 @@ class MainWindow(QMainWindow):
 
         self.row = QHBoxLayout()
         self.row.addWidget(scroll_area)
-        self.row.addWidget(plus_button)
+        self.row.addWidget(self.plus_button)
 
         self.layout.addLayout(self.row)
+    
+    def add_rule(self, row_layout, count):
+        rules = Rules(self.plus_button)
 
-    def add_conditioning(self, row_layout):
-        sharedCondition = SharedCondition(0, "pos", True)
+        # Connect the signal from the Rules widget to the add_conditioning method
+        rules.conditioning_selected.connect(lambda type: self.add_conditioning(row_layout, count, type))
+
+        # Set the Rules menu as the menu for the plus_button
+        self.plus_button.setMenu(rules)
+
+        rules.popup(QCursor.pos())
+        rules.aboutToHide.connect(rules.deleteLater)
+
+    def add_conditioning(self, row_layout, count, type="pos"):
+        print(count)
+        sharedCondition = SharedCondition(count, type, True)
         conditioning = Conditioning(self.sio_thread, sharedCondition)
         # Add the Conditioning widget to the last row's layout
         row_layout.addWidget(conditioning.group_box)
